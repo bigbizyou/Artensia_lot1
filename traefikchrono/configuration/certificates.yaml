@@ -1,0 +1,11 @@
+# Dynamic configuration
+# in configuration/certificates.yaml
+tls:
+  certificates:
+    # first certificate
+    - certFile: ~/psclprd001.cer
+      keyFile: ~/psclprd001.key
+
+    # second certificate
+    - certFile: ~/blmchronodrivelocal.cer
+      keyFile: ~/blmchronodrivelocal.key

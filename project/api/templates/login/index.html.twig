@@ -1,0 +1,64 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Log in!{% endblock %}
+
+{% block body %}
+
+        <div class="ui middle aligned center aligned grid">
+            <div class="column">
+                <div class="login-box">
+                    <h2 class="ui teal image header" >
+                        <div class="">
+                            <img src={{ asset("/build/images/LogoChronodriveGreen.svg")}} class="image" />
+                        </div>
+                    </h2>
+                    {% if error %}
+                        <div class="ui error message">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
+                    {% endif %}
+                    {% if app.user %}
+                    <div class="mb-3">
+                        Vous êtes connecter en tant que {{ app.user.username }}, <a href="{{ path('app_logout') }}">Logout</a>
+                    </div>
+                    {% endif %}
+                    <form class="ui large form" method="post" action="{{ path('app_login')}}">
+                        <div class="ui stacked segment">
+                            <div class="field">
+                                <div class="ui left icon input">
+                                    <i class="user icon"></i>
+                                    <input type="text" value="{{ last_username }}" name="_username" id="inputUsername" class="form-control" placeholder="Username" required autofocus>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="ui left icon input">
+                                    <i class="lock icon"></i>
+                                    <input type="password" name="_password" id="inputPassword" class="form-control" placeholder="Password" required autofocus>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="ui checkbox checked">
+                                    <label for="_remember_me">
+                                        <input type="checkbox" name="_remember_me"  id="_remember_me">
+                                        Se souvenir de moi
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button class="ui fluid large teal submit button">Me connecter</button>
+                        </div>
+                        
+                        
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}" >
+                        {# If you want to control the URL the user is redirected to on success #}
+                        <input type="hidden" name="_target_path" value="/admin"/>
+                    </form>
+                    {#
+                    <div class="ui message">
+                        Nouvel utilisateur ?
+                        <a href="/register">Sign Up</a>
+                    </div>
+                    #}
+                </div>
+            </div>  
+        </div>
+
+{% endblock %}

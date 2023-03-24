@@ -1,0 +1,141 @@
+version: "3.3"
+
+services:
+  traefik:
+    image: "traefik:v2.5"
+    container_name: www_docker_traefik
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=christophe@bigbizyou.agency"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--providers.file.directory=/etc/traefik/"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - ./dev-traefik.yml:/etc/traefik/traefik.yml
+      - ./dev-tls.yml:/etc/traefik/tls.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - certs:/etc/ssl/traefik
+    labels:
+      # global redirect to https
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+
+      # middleware redirect
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    networks:
+        - web
+      
+   
+  reverse-proxy-https-helper:
+    image: alpine
+    container_name: www_docker_ssl_proxy
+    command: sh -c "cd /etc/ssl/traefik
+      && wget traefik.me/cert.pem -O cert.pem
+      && wget traefik.me/privkey.pem -O privkey.pem"
+    volumes:
+      - certs:/etc/ssl/traefik
+    # networks:
+    #   - web
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: www_docker_pma
+    # restart: always
+    # environment:
+    #   PMA_HOST: db
+    #   PMA_USER: root
+    #   PMA_PASSWORD: root
+    ports:
+      - "8081:80"
+    networks:
+        - web
+  api:
+    build: "php.apache"
+    container_name: www_docker_api
+    ports:
+      - 8082:80
+    volumes:
+      - ./php.apache/conf:/etc/apache2/sites-enabled
+      - ./project/api:/var/www
+    labels:
+      - "traefik.http.routers.www_docker_api.rule=Host(`api.traefik.me`)"
+      #- "traefik.http.routers.www_docker_sulu.middlewares=auth"
+      - "traefik.http.routers.www_docker_api.entrypoints=websecure"
+      - "traefik.http.routers.www_docker_api.tls=true"
+      # - "traefik.http.routers.my-app.tls.certresolver=leresolver"
+      # - "traefik.http.middlewares.auth.basicauth.users=user:$$apr1$$q8eZFHjF$$Fvmkk//V6Btlaf2i/ju5n/" # user/password
+    environment:
+      APP_ENV: "dev"
+      APP_DEBUG: "1"
+      APP_SECRET: "EDITME"
+      DATABASE_URL: mysql://root:root@db/artensia_db
+    networks:
+      - web
+
+  app:
+    build: "nodeserver"
+    # env_file: project/.env
+    container_name: www_docker_webapp
+    ports:
+      - "1600:3000"
+    volumes:
+        #- ./8.0/php.ini:/usr/local/etc/php/php.ini
+        # - ./php.apache/conf:/etc/apache2/sites-enabled
+        - ./project/webapp:/usr/src/app
+    labels:
+      - "traefik.http.routers.www_docker_node.rule=Host(`node.traefik.me`)"
+      #- "traefik.http.routers.www_docker_node.middlewares=auth"
+      - "traefik.http.routers.www_docker_node.entrypoints=websecure"
+      - "traefik.http.routers.www_docker_node.tls=true"
+      # - "traefik.http.routers.my-app.tls.certresolver=leresolver"
+      # - "traefik.http.middlewares.auth.basicauth.users=user:$$apr1$$q8eZFHjF$$Fvmkk//V6Btlaf2i/ju5n/" # user/password
+    networks:
+        - web
+  maildev:
+    image: maildev/maildev
+    container_name: www_docker_maildev
+    command: bin/maildev --web 80 --smtp 25 --hide-extensions STARTTLS
+    ports:
+      - "8083:80"
+    restart: always
+    networks:
+        - web
+  # service DataBase
+  db:
+    image: mysql
+    container_name: www_docker_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: artensia_db
+    ports:
+      - "3308:3306"
+    networks:
+        - web
+    volumes:
+        - ./db-data-artensia:/var/lib/mysql
+volumes:
+  certs:
+
+networks:
+      web:
+
+# Dashboard (https://localhost:8080)
+# Route
+# Basic auth (login: user | password: password)
+# Let's Encrypt (https://whoami.docker.localhost/)
+# Global HTTP to HTTPS redirection (http://whoami.docker.localhost/)
+
+# touch acme.json; chmod 600 acme.json
+

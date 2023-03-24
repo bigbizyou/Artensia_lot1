@@ -1,0 +1,111 @@
+# docker-compose de mise en production
+# commenter le container phpmyadmin quand mise en prod est finalisée
+version: "3.5"
+services:
+  traefik:
+    image: "traefik:v2.5"
+    container_name: "traefik"
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=kodi.webstudio@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--providers.file.directory=/etc/traefik/"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+      - "./prod-tls.yml:/etc/traefik/prod-tls.yml"
+      - "./prod-traefik.yml:/etc/traefik/prod-traefik.yml"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.api.service=api@internal"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.middlewares=auth"
+      - "traefik.http.routers.app.service=api@internal"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$RHNoxtd9$$Y8RoCSL10ymRaYeEe4mJL/"
+      - "traefik.http.middlewares.strip-www.redirectregex.regex=^https?://(?:www\\.)?(.+)"
+      - "traefik.http.middlewares.strip-www.redirectregex.replacement=https://www.$${1}"
+      - "traefik.http.middlewares.strip-www.redirectregex.permanent=true"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=websecure"
+      - "--certificatesresolvers.myresolver.acme.email=kodi.webstudio@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    networks:
+      - web
+
+  db:
+    image: mysql
+    container_name: www_docker_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: chronodb_db
+    ports:
+      - "3308:3306"
+    networks:
+        - web
+    volumes:
+        - ./db-data-chrono:/var/lib/mysql
+  # phpmyadmin:
+    ## disabled in prod
+  maildev:
+    image: maildev/maildev
+    container_name: www_docker_maildev
+    command: bin/maildev --web 80 --smtp 25 --hide-extensions STARTTLS
+    ports:
+      - "8082:80"
+    restart: always
+    networks:
+        - web  
+  api:
+    build: "php.apache"
+    container_name: www_docker_api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.www_docker_api.entrypoints=websecure"
+      - "traefik.http.routers.www_docker_api.rule=Host(`blmadmin.chronodrive.com`)"
+      - "traefik.http.routers.www_docker_api.tls.certresolver=myresolver"
+      - "traefik.http.routers.www_docker_api.tls.options=configtls"
+    volumes:
+        - ./php.apache/conf.prod:/etc/apache2/sites-enabled
+        - ./project/api:/var/www
+    restart: always
+    networks:
+        - web
+    environment:
+      APP_ENV: "prod"
+      APP_DEBUG: "0"
+      APP_SECRET: "EDITME"
+      DATABASE_URL: mysql://root:root@db/chronodb_db
+
+  app:
+    build: "nodeserver"
+    container_name: www_docker_webapp
+    ports:
+      - "8085:3000"
+    volumes:
+        - ./project/webapp:/usr/src/app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.www_docker_webapp.entrypoints=websecure"
+      - "traefik.http.routers.www_docker_webapp.rule=Host(`blm.chronodrive.com`)"
+      - "traefik.http.routers.www_docker_webapp.tls.certresolver=myresolver"
+      - "traefik.http.routers.www_docker_webapp.tls.options=configtls"
+    networks:
+        - web
+networks:
+  web:
